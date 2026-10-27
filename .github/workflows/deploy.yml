@@ -1,0 +1,180 @@
+name: CloudDock Build, Security Scan, and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-scan-deploy:
+    name: Build, Scan, and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Get the source code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configure Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. Build the image locally on the GitHub runner
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest
+
+      # 4. Scan the image using Trivy
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+
+      # 5. Authenticate with Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 6. Push the scanned image to Docker Hub
+      - name: Push image to Docker Hub
+        run: |
+          docker push "${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}"
+          docker push "${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest"
+
+      # 7. Deploy the image to EC2 using SSH
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+
+            sudo docker rm -f clouddock-app || true
+
+            sudo docker run -d \
+              --name clouddock-app \
+              --restart unless-stopped \
+              -p 5000:5000 \
+              ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+
+      # 8. Notify Slack when the entire job succeeds
+      - name: Slack notification - Success
+        if: success()
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CloudDock deployment successful!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "CloudDock Deployment Successful"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "The Docker image was built, scanned by Trivy, pushed to Docker Hub, and deployed to EC2."
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n`${{ github.sha }}`"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                  }
+                }
+              ]
+            }
+
+      # 9. Notify Slack when an earlier step fails
+      - name: Slack notification - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CloudDock pipeline failed!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "CloudDock Pipeline Failed"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "An earlier step in the build, Trivy scan, Docker push, or EC2 deployment failed. Please check the GitHub Actions logs."
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n`${{ github.sha }}`"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View failed workflow run>"
+                  }
+                }
+              ]
+            }
