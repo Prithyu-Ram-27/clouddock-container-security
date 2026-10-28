@@ -33,26 +33,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest
-      - name: Verify Python package versions in image
-        run: |
-          docker run --rm \
-            "${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}" \
-            python -c "import importlib.metadata as m; print('jaraco.context:', m.version('jaraco.context')); print('wheel:', m.version('wheel'))"
-
-      - name: Inspect package metadata
-        run: |
-          IMAGE="${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}"
-
-          docker run --rm "$IMAGE" python -m pip show \
-            jaraco.context wheel
-
-          docker run --rm "$IMAGE" sh -c \
-            "find /usr/local/lib/python3.11/site-packages \
-            -type f \( \
-            -path '*/jaraco.context-*.dist-info/METADATA' \
-            -o -path '*/wheel-*.dist-info/METADATA' \
-            \) -print -exec grep -E '^(Name|Version):' {} \;"
-
+     
       # 4. Scan the image using Trivy
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.34.0
