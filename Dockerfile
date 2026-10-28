@@ -1,10 +1,9 @@
 
-FROM node:24-bookworm-slim
+FROM node:24-alpine
 
 WORKDIR /app
 
-# Run the application as a non-root user
-COPY --chown=node:node app/server.js .
+COPY app/server.js .
 
 USER node
 
