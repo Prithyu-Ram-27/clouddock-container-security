@@ -33,7 +33,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest
-     
+
       # 4. Scan the image using Trivy
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.34.0
@@ -56,26 +56,40 @@ jobs:
       # 6. Push the scanned image to Docker Hub
       - name: Push image to Docker Hub
         run: |
+          set -e
           docker push "${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}"
           docker push "${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest"
 
-      # 7. Deploy the image to EC2 using SSH
+      # 7. Deploy the scanned image to EC2 using SSH
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-         
+          port: 22
+          timeout: 30s
+          command_timeout: 10m
           script: |
-            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+            set -e
+
+            IMAGE="${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}"
+
+            echo "Pulling scanned image: $IMAGE"
+            sudo docker pull "$IMAGE"
+
+            echo "Removing previous application container if present"
             sudo docker rm -f clouddock-app || true
+
+            echo "Starting new application container"
             sudo docker run -d \
               --name clouddock-app \
               --restart unless-stopped \
               -p 5000:80 \
-              ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
+              "$IMAGE"
 
+            echo "Checking running container"
+            sudo docker ps --filter name=clouddock-app
 
       # 8. Notify Slack when the entire job succeeds
       - name: Slack notification - Success
