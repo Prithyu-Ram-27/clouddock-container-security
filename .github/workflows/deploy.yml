@@ -35,7 +35,7 @@ jobs:
 
       # 4. Scan the image using Trivy
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.34.0
         with:
           image-ref: ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
           format: table
