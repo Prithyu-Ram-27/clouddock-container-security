@@ -1,7 +1,6 @@
 .git
 .github
-.venv
-__pycache__
-*.pyc
+node_modules
+requirements.txt
 .env
-reports
+*.log
