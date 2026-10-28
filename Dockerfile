@@ -8,20 +8,30 @@ RUN useradd --create-home appuser
 # Copy application dependencies
 COPY requirements.txt .
 
-# Install application dependencies
-RUN python -m pip install --no-cache-dir -r requirements.txt
 
-# Upgrade vulnerable Python packages
-RUN python -m pip install --no-cache-dir --upgrade --force-reinstall \
-    "jaraco.context==6.1.0" \
-    "wheel==0.46.2"
+# Install application dependencies and fixed package versions
+RUN python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip install --no-cache-dir --upgrade --force-reinstall \
+       "jaraco.context==6.1.0" \
+       "wheel==0.46.2"
 
-# Verify the installed versions
-RUN python -c "import importlib.metadata as m; \
-assert m.version('jaraco.context') == '6.1.0', m.version('jaraco.context'); \
-assert m.version('wheel') == '0.46.2', m.version('wheel'); \
-print('jaraco.context:', m.version('jaraco.context')); \
-print('wheel:', m.version('wheel'))"
+# Diagnose all installed copies of the affected packages
+RUN python - <<'PY'
+import importlib.metadata as metadata
+
+for dist in metadata.distributions():
+    name = (dist.metadata.get("Name") or "").lower().replace("_", "-")
+    if name in {"jaraco.context", "wheel"}:
+        print(f"{name}=={dist.version}: {dist._path}")
+
+for name, expected in [
+    ("jaraco.context", "6.1.0"),
+    ("wheel", "0.46.2"),
+]:
+    actual = metadata.version(name)
+    assert actual == expected, f"{name}: expected {expected}, got {actual}"
+    print(f"Verified {name}=={actual}")
+PY
 
 # Copy application source code
 COPY app/ .
