@@ -43,6 +43,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: HIGH,CRITICAL
+          version: v0.69.3
 
       # 5. Authenticate with Docker Hub
       - name: Log in to Docker Hub
