@@ -40,7 +40,7 @@ The project illustrates the integration of containerization, automation, cloud d
 | Nginx | Static web application server |
 
 ## Project Structure
-
+```
 CloudDock/
 ├── app/
 │   └── index.html
@@ -55,6 +55,7 @@ CloudDock/
 │       ├── deploy.yml
 │       └── flask-deploy.yml
 └── README.md
+```
 
 ## Architecture
 
@@ -184,7 +185,7 @@ The deployment uses the same EC2 instance for both applications, with separate c
 
 | Application | EC2 host port | Container port |
 |---|---:|---:|
-| Nginx | 5000 | 80 |
+| Nginx | 5000 | 8080 |
 | Flask | 5001 | 5000 |
 
 Configure inbound security-group rules only for the access that is required. For browser testing, restrict application ports to your trusted public IP when possible. Avoid exposing SSH port `22` to all IP addresses.
