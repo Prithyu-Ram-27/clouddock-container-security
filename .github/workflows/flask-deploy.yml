@@ -76,9 +76,13 @@ jobs:
             sudo docker run -d \
               --name clouddock-flask \
               --restart unless-stopped \
+              --read-only \
+              --cap-drop=ALL \
+              --security-opt=no-new-privileges:true \
+              --tmpfs /tmp:rw,noexec,nosuid,size=16m \
               -p 5001:5000 \
-              ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:${{ github.sha }}
-
+              ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:IMAGE_TAG
+            
             sudo docker ps
 
       - name: Slack notification - Success
