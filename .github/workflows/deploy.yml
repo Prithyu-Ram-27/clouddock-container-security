@@ -28,8 +28,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           load: true
           no-cache: true
+          pull: true
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/clouddock-container-security:latest
