@@ -1,0 +1,104 @@
+name: CloudDock Flask Build, Security Scan, and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-scan-deploy:
+    name: Build, Scan, and Deploy Flask
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/clouddock-flask
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Flask Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./flask-app
+          file: ./flask-app/Dockerfile
+          load: true
+          no-cache: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:${{ github.sha }}
+
+      - name: Scan Flask image with Trivy
+        uses: aquasecurity/trivy-action@v0.34.0
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: library
+          severity: HIGH,CRITICAL
+          version: v0.69.3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push Flask image to Docker Hub
+        run: |
+          docker tag "$IMAGE_NAME:${GITHUB_SHA}" "$IMAGE_NAME:latest"
+          docker push "$IMAGE_NAME:${GITHUB_SHA}"
+          docker push "$IMAGE_NAME:latest"
+
+      - name: Deploy Flask to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 5m
+          script: |
+            set -e
+
+            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:${{ github.sha }}
+
+            sudo docker rm -f clouddock-flask || true
+
+            sudo docker run -d \
+              --name clouddock-flask \
+              --restart unless-stopped \
+              -p 5001:5000 \
+              ${{ secrets.DOCKER_USERNAME }}/clouddock-flask:${{ github.sha }}
+
+            sudo docker ps
+
+      - name: Slack notification - Success
+        if: success()
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CloudDock Flask deployment successful!"
+            }
+
+      - name: Slack notification - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "CloudDock Flask pipeline failed. Check GitHub Actions for Trivy scan results."
+            }
